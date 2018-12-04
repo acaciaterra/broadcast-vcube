@@ -253,7 +253,7 @@ void crash(tnodo j){
 					}
 					//existe algum elemento em ack_set que respeite <*, k, m>?
 					//retorna true, caso exista
-					// --- cont eh do primeiro for, que esta passando por todos os elementos do ack_set
+					// --- cont eh do ..primeiro for, que esta passando por todos os elementos do ack_set
 					// --- k eh o primeiro nodo sem falha obtido pela ff_neighbor
 					r = std::any_of(nodo[token].ack_set.begin(), nodo[token].ack_set.end(), [cont, k] (auto const &elem){
 						return elem.idorigem == cont->idorigem && elem.iddestino == k && !(elem.m.m.compare(cont->m.m));
@@ -347,6 +347,75 @@ void print_end(int r, int n){
 	printf("\nNúmero de rodadas total do programa: %d\n", r);
 	printf("\nVetor STATE ao final do diagnostico:\n");
 	print_state(nodo, n);
+}
+
+void freceive(int enviou, int recebeu){
+	int k, etp;
+	bool res;
+	// printf("<----Ultimo nodo - chegou na receive: %d\n", enviou);
+	// printf("TYPE = %c\n", nodo[token].last[ultima_msg->idorigem].type);
+	// std::cout << "-----> schedule:" << ultima_msg->m << "\n";
+	// printf("ULTIMO NODO: %d TOKEN: %d\n", enviou, token);
+	if(nodo[recebeu].last[ultima_msg->idorigem].type == 'N'
+	|| ultima_msg->timestamp > nodo[recebeu].last[ultima_msg->idorigem].timestamp){
+		//last_i[source(m)] <- m
+		//Atualiza o last do nodo atual com a mensagem que acabou
+		//de ser recebida do outro nodo
+		nodo[recebeu].last[ultima_msg->idorigem].type = ultima_msg->type;
+		nodo[recebeu].last[ultima_msg->idorigem].m.assign(ultima_msg->m);
+		nodo[recebeu].last[ultima_msg->idorigem].idorigem = ultima_msg->idorigem;
+		nodo[recebeu].last[ultima_msg->idorigem].timestamp = ultima_msg->timestamp;
+		//deliver(m)
+		std::cout <<"MENSAGEM " << nodo[recebeu].last[ultima_msg->idorigem].m << " RECEBIDA DO NODO " << enviou <<" FOI ENTREGUE PARA A APLICACAO (DELIVER) PELO PROCESSO " << recebeu << " NO TEMPO " << time() << "\n";
+		// printf("Nodo: %d\n", nodo[ultima_msg->idorigem].idr);
+		// printf("Status do nodo: %d\n", status(nodo[ultima_msg->idorigem].id));
+		if(status(nodo[ultima_msg->idorigem].id) != 0){
+			// std::cout <<"Fazendo novo broadcast para os vizinhos sem-falha... " << "\n";
+			schedule(broadcast, 1.0, recebeu);
+			// broadcast(*ultima_msg);
+			return;
+		}
+	}
+	//encontrar identificador do cluster s de i que contem j
+	for(int c = 0; c < tests[recebeu].size; c++){
+		// printf("Agora vai calcular o cluster...\n");
+		if(tests[recebeu].vector[c] == enviou){
+			etp = tests[recebeu].etapa[c];
+			// printf("Cluster do %d: %d\n", enviou, etp);
+			break;
+		}
+	}
+	//retransmitir aos vizinhos corretos na arvore de source(m)
+	//que pertencem ao cluster s que contém elementos
+	//corretos de g
+	// printf("A principio, o cluster do %d é %d\n", recebeu, etp);
+	// printf("O nodo recebeu é: %d\n", recebeu);
+	// printf("Se for 2, ou mais, ele PRECISA ENTRAR NO FOR\n");
+	for(int i = 1; i <= etp - 1; i++){
+		// printf("Entrou no for :D\n");
+		//existe algum elemento em ack_set que respeite <*, k, m>?
+		//retorna true, caso exista
+		for(int j = 0; j < tests[recebeu].size; j++){
+			if(tests[recebeu].etapa[j] == i && status(nodo[tests[recebeu].vector[j]].id) == 0){
+				//k <- ff_neighbor
+				k = tests[recebeu].vector[j];
+				//existe algum elemento em ack_set que respeite <j, k, m>?
+				//retorna true, caso exista
+				res = std::any_of(nodo[recebeu].ack_set.begin(), nodo[recebeu].ack_set.end(), [k, enviou] (auto const &elem){
+					return elem.idorigem == enviou && elem.iddestino == k && !(elem.m.m.compare(ultima_msg->m));
+				});
+				//if <j,k,m> nao pertence ack_set(i)
+				if(!res){
+					nodo[recebeu].ack_set.insert(tset{enviou, k, *ultima_msg});
+					printf("---> %d enviou a mensagem para o processo %d\n", recebeu, k);
+					// enviou = recebeu;
+					// schedule(receive_msg, 1.0, k);
+					freceive(recebeu, k);
+				}
+			}
+		}
+	}
+	checkacks(nodo[enviou], *ultima_msg);
 }
 
 int main(int argc, char const *argv[]) {
@@ -585,60 +654,70 @@ int main(int argc, char const *argv[]) {
 			schedule(test, 30.0, token);
 			break;
 			case receive_msg:
-				int k;
-				// printf("TYPE = %c\n", nodo[token].last[ultima_msg->idorigem].type);
-				// std::cout << "-----> schedule:" << ultima_msg->m << "\n";
-				if(nodo[token].last[ultima_msg->idorigem].type == 'N'
-				|| ultima_msg->timestamp > nodo[token].last[ultima_msg->idorigem].timestamp){
-					//last_i[source(m)] <- m
-					//Atualiza o last do nodo atual com a mensagem que acabou
-					//de ser recebida do outro nodo
-					nodo[token].last[ultima_msg->idorigem].type = ultima_msg->type;
-					nodo[token].last[ultima_msg->idorigem].m.assign(ultima_msg->m);
-					nodo[token].last[ultima_msg->idorigem].idorigem = ultima_msg->idorigem;
-					nodo[token].last[ultima_msg->idorigem].timestamp = ultima_msg->timestamp;
-					//deliver(m)
-					std::cout <<"MENSAGEM " << nodo[token].last[ultima_msg->idorigem].m << " RECEBIDA DO NODO " << ultimo_nodo <<" FOI ENTREGUE PARA A APLICACAO (DELIVER) PELO PROCESSO " << token << " NO TEMPO " << time() << "\n";
-					// printf("Nodo: %d\n", nodo[ultima_msg->idorigem].idr);
-					// printf("Status do nodo: %d\n", status(nodo[ultima_msg->idorigem].id));
-					if(status(nodo[ultima_msg->idorigem].id) == 0){
-						// std::cout <<"Fazendo novo broadcast para os vizinhos sem-falha... " << "\n";
-						schedule(broadcast, 1.0, token);
-						// broadcast(*ultima_msg);
-						break;
-					}
-				}
-				//encontrar identificador do cluster s de i que contem j
-				for(int c = 0; c < tests[token].size; c++)
-					if(tests[token].vector[c] == ultimo_nodo){
-						etp = tests[token].etapa[c];
-						break;
-					}
-				//retransmitir aos vizinhos corretos na arvore de source(m)
-				//que pertencem ao cluster s que contém elementos
-				//corretos de g
-				for(int i = 1; i < etp - 1; i++){
-					//existe algum elemento em ack_set que respeite <*, k, m>?
-					//retorna true, caso exista
-					for(int j = 0; j < tests[token].size; j++){
-						if(tests[token].etapa[j] == etp && status(nodo[tests[token].vector[j]].id) == 0){
-							//k <- ff_neighbor
-							k = tests[token].vector[j];
-							//existe algum elemento em ack_set que respeite <j, k, m>?
-							//retorna true, caso exista
-							res = std::any_of(nodo[token].ack_set.begin(), nodo[token].ack_set.end(), [k] (auto const &elem){
-								return elem.idorigem == ultimo_nodo && elem.iddestino == k && !(elem.m.m.compare(ultima_msg->m));
-							});
-							//if <j,k,m> nao pertence ack_set(i)
-							if(!r){
-								nodo[token].ack_set.insert(tset{ultimo_nodo, k, *ultima_msg});
-								// printf("Enviou a mensagem para o processo %d\n", k);
-								schedule(receive_msg, 1.0, k);
-							}
-						}
-					}
-				}
-				checkacks(nodo[k], *ultima_msg);
+				// int k;
+				// // printf("<----Ultimo nodo - chegou na receive: %d\n", ultimo_nodo);
+				// // printf("TYPE = %c\n", nodo[token].last[ultima_msg->idorigem].type);
+				// // std::cout << "-----> schedule:" << ultima_msg->m << "\n";
+				// // printf("ULTIMO NODO: %d TOKEN: %d\n", ultimo_nodo, token);
+				// if(nodo[token].last[ultima_msg->idorigem].type == 'N'
+				// || ultima_msg->timestamp > nodo[token].last[ultima_msg->idorigem].timestamp){
+				// 	//last_i[source(m)] <- m
+				// 	//Atualiza o last do nodo atual com a mensagem que acabou
+				// 	//de ser recebida do outro nodo
+				// 	nodo[token].last[ultima_msg->idorigem].type = ultima_msg->type;
+				// 	nodo[token].last[ultima_msg->idorigem].m.assign(ultima_msg->m);
+				// 	nodo[token].last[ultima_msg->idorigem].idorigem = ultima_msg->idorigem;
+				// 	nodo[token].last[ultima_msg->idorigem].timestamp = ultima_msg->timestamp;
+				// 	//deliver(m)
+				// 	std::cout <<"MENSAGEM " << nodo[token].last[ultima_msg->idorigem].m << " RECEBIDA DO NODO " << ultimo_nodo <<" FOI ENTREGUE PARA A APLICACAO (DELIVER) PELO PROCESSO " << token << " NO TEMPO " << time() << "\n";
+				// 	// printf("Nodo: %d\n", nodo[ultima_msg->idorigem].idr);
+				// 	// printf("Status do nodo: %d\n", status(nodo[ultima_msg->idorigem].id));
+				// 	if(status(nodo[ultima_msg->idorigem].id) != 0){
+				// 		// std::cout <<"Fazendo novo broadcast para os vizinhos sem-falha... " << "\n";
+				// 		schedule(broadcast, 1.0, token);
+				// 		// broadcast(*ultima_msg);
+				// 		break;
+				// 	}
+				// }
+				// //encontrar identificador do cluster s de i que contem j
+				// for(int c = 0; c < tests[token].size; c++){
+				// 	printf("Agora vai calcular o cluster...\n");
+				// 	if(tests[token].vector[c] == ultimo_nodo){
+				// 		etp = tests[token].etapa[c];
+				// 		printf("Cluster do %d: %d\n", ultimo_nodo, etp);
+				// 		break;
+				// 	}
+				// }
+				// //retransmitir aos vizinhos corretos na arvore de source(m)
+				// //que pertencem ao cluster s que contém elementos
+				// //corretos de g
+				// printf("A principio, o cluster do %d é %d\n", token, etp);
+				// printf("O nodo token é: %d\n", token);
+				// printf("Se for 2, ou mais, ele PRECISA ENTRAR NO FOR\n");
+				// for(int i = 1; i <= etp - 1; i++){
+				// 	printf("Entrou no for :D\n");
+				// 	//existe algum elemento em ack_set que respeite <*, k, m>?
+				// 	//retorna true, caso exista
+				// 	for(int j = 0; j < tests[token].size; j++){
+				// 		if(tests[token].etapa[j] == i && status(nodo[tests[token].vector[j]].id) == 0){
+				// 			//k <- ff_neighbor
+				// 			k = tests[token].vector[j];
+				// 			//existe algum elemento em ack_set que respeite <j, k, m>?
+				// 			//retorna true, caso exista
+				// 			res = std::any_of(nodo[token].ack_set.begin(), nodo[token].ack_set.end(), [k] (auto const &elem){
+				// 				return elem.idorigem == ultimo_nodo && elem.iddestino == k && !(elem.m.m.compare(ultima_msg->m));
+				// 			});
+				// 			//if <j,k,m> nao pertence ack_set(i)
+				// 			if(!res){
+				// 				nodo[token].ack_set.insert(tset{ultimo_nodo, k, *ultima_msg});
+				// 				printf("%d Enviou a mensagem para o processo %d\n", token, k);
+				// 				// ultimo_nodo = token;
+				// 				schedule(receive_msg, 1.0, k);
+				// 			}
+				// 		}
+				// 	}
+				// }
+				// checkacks(nodo[k], *ultima_msg);
 				break;
 			case receive_ack:
 				// x | <x,j,m> pertence ack_set(i)
@@ -712,8 +791,11 @@ int main(int argc, char const *argv[]) {
 						// ultima_msg->m.assign(msg.m);
 						// ultima_msg->idorigem = msg.idorigem;
 						// ultima_msg->timestamp = msg.timestamp;
-						ultimo_nodo = token;
-						schedule(receive_msg, 1.0, nodo[k].idr);
+						// ultimo_nodo = token;
+						// printf("---> Ultimo nodo - antes de enviar a msg: %d\n", ultimo_nodo);
+						// schedule(receive_msg, 1.0, nodo[k].idr);
+						printf("---> %d enviou a mensagem para o processo %d\n", token, nodo[k].idr);
+						freceive(token, nodo[k].idr);
 					}
 				}
 			}

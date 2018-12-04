@@ -1,10 +1,7 @@
 8
-fault 45.0 1
-fault 45.0 2
-fault 45.0 4
-fault 45.0 7
-new_msg 60.0 6
-broadcast 65.0 6
+fault 40.0 5
+new_msg 60.0 0
+broadcast 65.0 0
 
 
 
